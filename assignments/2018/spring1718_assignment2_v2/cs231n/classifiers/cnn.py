@@ -53,7 +53,27 @@ class ThreeLayerConvNet(object):
         # **the width and height of the input are preserved**. Take a look at      #
         # the start of the loss() function to see how that happens.                #                           
         ############################################################################
-        pass
+        C, H, W = input_dim
+
+        self.params['W1'] = np.random.normal(0,weight_scale,(num_filters,C,filter_size,filter_size))
+        self.params['b1'] = np.zeros(num_filters)
+
+        conv_stride = 1
+        conv_pad = (filter_size - 1) // 2
+        pool_stride = 2
+        pool_size = 2
+
+        conv_Hout = 1 + int((H + 2 * conv_pad - filter_size) / conv_stride) 
+        conv_Wout = 1 + int((W + 2 * conv_pad - filter_size) / conv_stride)
+        pool_Hout = 1 + int((conv_Hout - pool_size) / pool_stride)
+        pool_Wout = 1 + int((conv_Wout - pool_size) / pool_stride)
+        flatten_size = num_filters * pool_Hout * pool_Wout
+
+        self.params['W2'] = np.random.normal(0,weight_scale,(flatten_size,hidden_dim))
+        self.params['b2'] = np.zeros(hidden_dim)
+
+        self.params['W3'] = np.random.normal(0,weight_scale,(hidden_dim, num_classes))
+        self.params['b3'] = np.zeros(num_classes)
         ############################################################################
         #                             END OF YOUR CODE                             #
         ############################################################################
@@ -71,7 +91,7 @@ class ThreeLayerConvNet(object):
         W1, b1 = self.params['W1'], self.params['b1']
         W2, b2 = self.params['W2'], self.params['b2']
         W3, b3 = self.params['W3'], self.params['b3']
-
+        print(W1.shape)
         # pass conv_param to the forward pass for the convolutional layer
         # Padding and stride chosen to preserve the input spatial size
         filter_size = W1.shape[2]
@@ -89,7 +109,11 @@ class ThreeLayerConvNet(object):
         # Remember you can use the functions defined in cs231n/fast_layers.py and  #
         # cs231n/layer_utils.py in your implementation (already imported).         #
         ############################################################################
-        pass
+        out_conv, cache_conv = conv_relu_pool_forward(X, W1, b1, conv_param, pool_param)
+        out_flatten = out_conv.reshape((X.shape[0], -1))
+
+        out_hidden, cache_hidden = affine_relu_forward(out_flatten, W2, b2)
+        scores, cache_scores = affine_forward(out_hidden, W3, b3)
         ############################################################################
         #                             END OF YOUR CODE                             #
         ############################################################################
@@ -108,9 +132,38 @@ class ThreeLayerConvNet(object):
         # automated tests, make sure that your L2 regularization includes a factor #
         # of 0.5 to simplify the expression for the gradient.                      #
         ############################################################################
-        pass
+        # softmax loss         
+        exps = np.exp(scores)
+        softmax_scores = exps / (np.sum(exps,axis=1,keepdims=True)+1e-5)
+
+        log_loss = -np.log(softmax_scores[np.arange(X.shape[0]),y] + 1e-6)
+        loss = np.mean(log_loss)
+        
+        # add loss with reg term
+        loss += 0.5*self.reg*np.sum(W1*W1)
+        loss += 0.5*self.reg*np.sum(W2*W2)
+        loss += 0.5*self.reg*np.sum(W3*W3)
+
+        # softmax upstream grad
+        dscores = softmax_scores
+        dscores[np.arange(X.shape[0]),y] -= 1
+        dscores /= X.shape[0]
+        
+        # grad backward
+        dout_hidden, dW3, db3 = affine_backward(dscores, cache_scores)
+        dout_flatten, dW2, db2 = affine_relu_backward(dout_hidden, cache_hidden)
+        dout_conv = dout_flatten.reshape(out_conv.shape)
+        dX, dW1, db1 = conv_relu_pool_backward(dout_conv, cache_conv)
+
+        # add grad with reg term
+        dW3 += self.reg*W3 
+        dW2 += self.reg*W2
+        dW1 += self.reg*W1
+
+        # save dW and db to grads
+        grads['W1'], grads['W2'], grads['W3'] = dW1, dW2, dW3
+        grads['b1'], grads['b2'], grads['b3'] = db1, db2, db3
         ############################################################################
         #                             END OF YOUR CODE                             #
         ############################################################################
-
         return loss, grads
