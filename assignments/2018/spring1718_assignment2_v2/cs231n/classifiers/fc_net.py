@@ -106,22 +106,16 @@ class TwoLayerNet(object):
         # automated tests, make sure that your L2 regularization includes a factor #
         # of 0.5 to simplify the expression for the gradient.                      #
         ############################################################################
-        # softmax loss         
-        exps = np.exp(scores)
-        softmax_scores = exps / (np.sum(exps,axis=1,keepdims=True)+1e-5)
+        # softmax loss and dscores       
+        loss, dscores = softmax_loss(scores,y)
 
         log_loss = -np.log(softmax_scores[np.arange(N),y])
         loss = np.mean(log_loss)
         loss += 0.5*reg*(np.sum(W1*W1) + np.sum(W2*W2))
         
-        # softmax dloss
-        dscores = softmax_scores
-        dscores[np.arange(N),y] -= 1
-        dscores /= N
-        
         # grad update        
         dhidden, dW2, db2 = affine_backward(dscores,cache_scores)
-        dX, dW1, db1 = affine_relu_backward(dhidden,cache_hidden)
+        _, dW1, db1 = affine_relu_backward(dhidden,cache_hidden)
 
         # reg term
         dW2 += reg*W2
@@ -305,23 +299,14 @@ class FullyConnectedNet(object):
         # automated tests, make sure that your L2 regularization includes a factor #
         # of 0.5 to simplify the expression for the gradient.                      #
         ############################################################################
-        # softmax loss         
-        exps = np.exp(scores)
-        softmax_scores = exps / (np.sum(exps,axis=1,keepdims=True)+1e-5)
-
-        log_loss = -np.log(softmax_scores[np.arange(X.shape[0]),y] + 1e-6)
-        loss = np.mean(log_loss)
+        # softmax loss and dscores       
+        loss, dscores = softmax_loss(scores,y)
 
         # reg term
         for i in range(self.num_layers):
             W_key = 'W' + str(i+1)
             W = self.params[W_key]
             loss += 0.5*self.reg*np.sum(W*W)
-        
-        # softmax dloss
-        dscores = softmax_scores
-        dscores[np.arange(X.shape[0]),y] -= 1
-        dscores /= X.shape[0]
 
         # back propagate
         cache = cache_list[-1]

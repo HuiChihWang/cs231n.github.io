@@ -131,28 +131,19 @@ class ThreeLayerConvNet(object):
         # automated tests, make sure that your L2 regularization includes a factor #
         # of 0.5 to simplify the expression for the gradient.                      #
         ############################################################################
-        # softmax loss         
-        exps = np.exp(scores)
-        softmax_scores = exps / (np.sum(exps,axis=1,keepdims=True)+1e-5)
-
-        log_loss = -np.log(softmax_scores[np.arange(X.shape[0]),y] + 1e-6)
-        loss = np.mean(log_loss)
+        # softmax loss and dscores       
+        loss, dscores = softmax_loss(scores,y)
         
         # add loss with reg term
         loss += 0.5*self.reg*np.sum(W1*W1)
         loss += 0.5*self.reg*np.sum(W2*W2)
         loss += 0.5*self.reg*np.sum(W3*W3)
-
-        # softmax upstream grad
-        dscores = softmax_scores
-        dscores[np.arange(X.shape[0]),y] -= 1
-        dscores /= X.shape[0]
         
         # grad backward
         dout_hidden, dW3, db3 = affine_backward(dscores, cache_scores)
         dout_flatten, dW2, db2 = affine_relu_backward(dout_hidden, cache_hidden)
         dout_conv = dout_flatten.reshape(out_conv.shape)
-        dX, dW1, db1 = conv_relu_pool_backward(dout_conv, cache_conv)
+        _, dW1, db1 = conv_relu_pool_backward(dout_conv, cache_conv)
 
         # add grad with reg term
         dW3 += self.reg*W3 
