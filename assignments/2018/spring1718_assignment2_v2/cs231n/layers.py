@@ -819,7 +819,7 @@ def spatial_groupnorm_forward(x, gamma, beta, G, gn_param):
     - x: Input data of shape (N, C, H, W)
     - gamma: Scale parameter, of shape (C,)
     - beta: Shift parameter, of shape (C,)
-    - G: Integer mumber of groups to split into, should be a divisor of C
+    - G: Integer number of groups to split into, should be a divisor of C
     - gn_param: Dictionary with the following keys:
       - eps: Constant for numeric stability
 
@@ -836,7 +836,20 @@ def spatial_groupnorm_forward(x, gamma, beta, G, gn_param):
     # the bulk of the code is similar to both train-time batch normalization  #
     # and layer normalization!                                                # 
     ###########################################################################
-    pass
+    N, C, H, W = x.shape
+    x_transform = x.reshape((N, G, C//G, H, W))
+    x_mean = np.mean(x_transform, axis=(2,3,4), keepdims=True)
+    x_mu = x_transform - x_mean
+    
+    x_mu_sq = x_mu ** 2
+    x_var = np.mean(x_mu_sq, axis=(2,3,4), keepdims=True)
+    x_std = np.sqrt(x_var + eps)
+    x_std_inv = 1./x_std
+
+    x_norm = x_mu * x_std_inv
+    out = x_norm.reshape((N, C, H, W)) * gamma.reshape((1,C,1,1)) + beta.reshape((1,C,1,1))
+
+    cache = (x_norm, gamma, x_mu, x_std_inv, x_std, x_var, eps)
     ###########################################################################
     #                             END OF YOUR CODE                            #
     ###########################################################################
@@ -862,7 +875,35 @@ def spatial_groupnorm_backward(dout, cache):
     # TODO: Implement the backward pass for spatial group normalization.      #
     # This will be extremely similar to the layer norm implementation.        #
     ###########################################################################
-    pass
+    x_norm, gamma, x_mu, x_std_inv, x_std, x_var, eps = cache
+    N, C, H, W = dout.shape
+    G = x_norm.shape[1]
+    input_shape = x_norm.shape
+
+    # grad for dbeta and dgamma
+    dbeta = np.sum(dout, axis=(0,2,3), keepdims=True)
+    dgamma = np.sum(dout *  x_norm.reshape((N, C, H, W)), axis=(0,2,3), keepdims=True)
+    dx_norm = (dout * gamma.reshape((1,C,1,1))).reshape(input_shape)
+
+    # grad from dx
+    dx_std_inv = np.sum(dx_norm * x_mu, axis=(2,3,4), keepdims=True)
+    dx_mu_from_xnorm = dx_norm * x_std_inv
+
+    dx_std = - dx_std_inv / x_std**2
+    dx_var = 0.5 * dx_std / np.sqrt(x_var + eps)
+
+    dx_mu_sq = np.ones(input_shape) * dx_var / (H*W*C//G)
+    dx_mu_from_xsq = 2 * dx_mu_sq * x_mu
+
+    dx_mu = dx_mu_from_xnorm + dx_mu_from_xsq
+
+    dx_mean =  -np.sum(dx_mu,axis=(2,3,4), keepdims=True)
+
+    dx_from_xmu = dx_mu
+    dx_from_mean = np.ones(input_shape) * dx_mean / (H*W*C//G)
+
+    dx = (dx_from_xmu + dx_from_mean).reshape((N,C,H,W))
+
     ###########################################################################
     #                             END OF YOUR CODE                            #
     ###########################################################################
