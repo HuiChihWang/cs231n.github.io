@@ -253,8 +253,8 @@ def batchnorm_backward(dout, cache):
     # might prove to be helpful.                                              #
     ###########################################################################
     N, D = dout.shape
-    
     x_normalized, gamma, x_no_mean, x_std_inv, x_std, x_var, eps = cache
+    
     dbeta = np.sum(dout, axis=0)
     dgamma = np.sum(dout *  x_normalized, axis=0)
     dx_normalized = dout * gamma
@@ -307,7 +307,15 @@ def batchnorm_backward_alt(dout, cache):
     # should be able to compute gradients with respect to the inputs in a     #
     # single statement; our implementation fits on a single 80-character line.#
     ###########################################################################
-    pass
+    x_normalized, gamma, _, x_std_inv, _, _, _ = cache
+
+    dbeta = np.sum(dout, axis=0)
+    dgamma = np.sum(dout *  x_normalized, axis=0)
+    dx_normalized = dout * gamma
+
+    # direct grad from dx_normalized ref:https://kevinzakka.github.io/2016/09/14/batch_normalization/
+    dx = x_std_inv * (dx_normalized - np.mean(dx_normalized,axis=0) - x_normalized * np.mean(x_normalized * dx_normalized,axis=0))
+
     ###########################################################################
     #                             END OF YOUR CODE                            #
     ###########################################################################
@@ -349,7 +357,16 @@ def layernorm_forward(x, gamma, beta, ln_param):
     # transformations you could perform, that would enable you to copy over   #
     # the batch norm code and leave it almost unchanged?                      #
     ###########################################################################
-    pass
+    x_mean = np.mean(x, axis=1, keepdims=True)
+    x_mu = x - x_mean
+    x_mu_sq = x_mu ** 2
+    x_var = np.mean(x_mu_sq, axis=1, keepdims=True)
+    x_std = np.sqrt(x_var + eps)
+    x_std_inv = 1. / x_std
+    x_norm = x_mu * x_std_inv
+
+    out = x_norm * gamma + beta
+    cache = (x_norm, gamma, x_mu, x_std_inv, x_std, x_var, eps)
     ###########################################################################
     #                             END OF YOUR CODE                            #
     ###########################################################################
@@ -380,7 +397,33 @@ def layernorm_backward(dout, cache):
     # implementation of batch normalization. The hints to the forward pass    #
     # still apply!                                                            #
     ###########################################################################
-    pass
+    x_norm, gamma, x_mu, x_std_inv, x_std, x_var, eps = cache
+    N, D = dout.shape
+
+    # grad for dbeta and dgamma
+    dbeta = np.sum(dout, axis=0)
+    dgamma = np.sum(dout *  x_norm, axis=0)
+    dx_norm = dout * gamma
+
+    # grad from dx
+    dx_std_inv = np.sum(dx_norm * x_mu, axis=1, keepdims=True)
+    dx_mu_from_xnorm = dx_norm * x_std_inv
+
+    dx_std = - dx_std_inv / x_std**2
+    dx_var = 0.5 * dx_std / np.sqrt(x_var + eps)
+
+    dx_mu_sq = np.ones((N,D)) * dx_var / D
+    dx_mu_from_xsq = 2 * dx_mu_sq * x_mu
+
+    dx_mu = dx_mu_from_xnorm + dx_mu_from_xsq
+
+    dx_mean =  -np.sum(dx_mu,axis=1, keepdims=True)
+
+    dx_from_xmu = dx_mu
+    dx_from_mean = np.ones((N,D)) * dx_mean / D
+
+    dx = dx_from_xmu + dx_from_mean
+
     ###########################################################################
     #                             END OF YOUR CODE                            #
     ###########################################################################
@@ -719,7 +762,12 @@ def spatial_batchnorm_forward(x, gamma, beta, bn_param):
     # vanilla version of batch normalization you implemented above.           #
     # Your implementation should be very short; ours is less than five lines. #
     ###########################################################################
-    pass
+    N, C, H, W = x.shape
+    x_transpose = x.transpose((0,2,3,1))
+    x_flatten = x_transpose.reshape((-1,C))
+    out_faltten_bn, cache = batchnorm_forward(x_flatten, gamma, beta, bn_param) 
+
+    out = out_faltten_bn.reshape((N,H,W,C)).transpose((0,3,1,2))
     ###########################################################################
     #                             END OF YOUR CODE                            #
     ###########################################################################
@@ -749,7 +797,10 @@ def spatial_batchnorm_backward(dout, cache):
     # vanilla version of batch normalization you implemented above.           #
     # Your implementation should be very short; ours is less than five lines. #
     ###########################################################################
-    pass
+    N, C, H, W = dout.shape
+    dout_flatten = dout.transpose((0,2,3,1)).reshape((-1,C))
+    dx_flatten, dgamma, dbeta = batchnorm_backward_alt(dout_flatten,cache)
+    dx = dx_flatten.reshape((N,H,W,C)).transpose((0,3,1,2))
     ###########################################################################
     #                             END OF YOUR CODE                            #
     ###########################################################################

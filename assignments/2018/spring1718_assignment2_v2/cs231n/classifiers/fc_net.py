@@ -198,10 +198,18 @@ class FullyConnectedNet(object):
             self.params[W_key] = np.random.normal(0, scale = weight_scale, size = (in_size,out_size))
             self.params[b_key] = np.zeros(out_size)
             in_size = out_size
+
         W_key = 'W' + str(self.num_layers)
         b_key = 'b' + str(self.num_layers)
         self.params[W_key] = np.random.normal(0, scale = weight_scale, size = (in_size,num_classes))
         self.params[b_key] = np.zeros(num_classes)
+
+        if self.normalization:
+            for i in range(self.num_layers-1):
+                gamma_key = 'gamma' + str(i+1)
+                beta_key = 'beta' + str(i+1)
+                self.params[gamma_key] = np.ones(hidden_dims[i])
+                self.params[beta_key] = np.zeros(hidden_dims[i])
         
         ############################################################################
         #                             END OF YOUR CODE                             #
@@ -268,15 +276,32 @@ class FullyConnectedNet(object):
             W_key = 'W' + str(i+1)
             b_key = 'b' + str(i+1)
             W, b = self.params[W_key], self.params[b_key]
-            output, cache = affine_relu_forward(output,W,b)
-            cache_list.append(cache)
+
+            output, cache_affine = affine_forward(output, W, b)
+            cache_list.append(cache_affine)
+
+            if self.normalization:
+                gamma_key = 'gamma' + str(i+1)
+                beta_key = 'beta' + str(i+1)
+                gamma, beta = self .params[gamma_key], self.params[beta_key]
+                bn_param = self.bn_params[i]
+
+                if self.normalization == 'batchnorm':
+                    output, cache_norm = batchnorm_forward(output, gamma, beta, bn_param)
+                elif self.normalization == 'layernorm':
+                    output, cache_norm = layernorm_forward(output, gamma, beta, bn_param)
+
+                cache_list.append(cache_norm)
+                
+            output, cache_relu = relu_forward(output)
+            cache_list.append(cache_relu)
         
         # last layer without relu
         W_key = 'W' + str(self.num_layers)
         b_key = 'b' + str(self.num_layers)
         W, b = self.params[W_key], self.params[b_key]
-        scores,cache = affine_forward(output, W, b)
-        cache_list.append(cache)
+        scores,cache_affine = affine_forward(output, W, b)
+        cache_list.append(cache_affine)
         ############################################################################
         #                             END OF YOUR CODE                             #
         ############################################################################
@@ -309,21 +334,40 @@ class FullyConnectedNet(object):
             loss += 0.5*self.reg*np.sum(W*W)
 
         # back propagate
-        cache = cache_list[-1]
-        doutput, dW, db = affine_backward(dscores,cache)
+        cache_affine = cache_list.pop()
+        doutput, dW, db = affine_backward(dscores,cache_affine)
         W_key = 'W' + str(self.num_layers)
         b_key = 'b' + str(self.num_layers)
         grads[W_key] = dW
         grads[b_key] = db
 
         for i in range(self.num_layers-1,0,-1):
-            cache = cache_list[i-1]
-            doutput, dW, db = affine_relu_backward(doutput,cache)
+            # backward relu 
+            cache_relu = cache_list.pop()
+            doutput = relu_backward(doutput, cache_relu)
+
+            # backward batchnorm
+            if self.normalization:
+                cache_norm = cache_list.pop()
+                if self.normalization == 'batchnorm':
+                    doutput, dgamma, dbeta = batchnorm_backward_alt(doutput, cache_norm)
+                elif self.normalization == 'layernorm':
+                    doutput, dgamma, dbeta = layernorm_backward(doutput, cache_norm)
+                
+                gamma_key = 'gamma' + str(i)
+                beta_key = 'beta' + str(i)
+                grads[gamma_key] = dgamma
+                grads[beta_key] = dbeta
+
+            # backward affine
+            cache_affine = cache_list.pop()
+            doutput, dW, db = affine_backward(doutput,cache_affine)
             W_key = 'W' + str(i)
             b_key = 'b' + str(i)
             grads[W_key] = dW
             grads[b_key] = db
 
+        # add grads with reg term
         for i in range(self.num_layers):
             W_key = 'W' + str(i+1)
             grads[W_key] += self.reg*self.params[W_key]
