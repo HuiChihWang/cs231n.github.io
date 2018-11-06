@@ -108,9 +108,6 @@ class TwoLayerNet(object):
         ############################################################################
         # softmax loss and dscores       
         loss, dscores = softmax_loss(scores,y)
-
-        log_loss = -np.log(softmax_scores[np.arange(N),y])
-        loss = np.mean(log_loss)
         loss += 0.5*reg*(np.sum(W1*W1) + np.sum(W2*W2))
         
         # grad update        
