@@ -274,9 +274,11 @@ class FullyConnectedNet(object):
             b_key = 'b' + str(i+1)
             W, b = self.params[W_key], self.params[b_key]
 
+            # affine forward
             output, cache_affine = affine_forward(output, W, b)
             cache_list.append(cache_affine)
 
+            # normalization forward
             if self.normalization:
                 gamma_key = 'gamma' + str(i+1)
                 beta_key = 'beta' + str(i+1)
@@ -289,9 +291,15 @@ class FullyConnectedNet(object):
                     output, cache_norm = layernorm_forward(output, gamma, beta, bn_param)
 
                 cache_list.append(cache_norm)
-                
+            
+            # relu forward
             output, cache_relu = relu_forward(output)
             cache_list.append(cache_relu)
+
+            # dropout forward
+            if self.use_dropout:
+                output, cache_dropout = dropout_forward(output, self.dropout_param)
+                cache_list.append(cache_dropout)
         
         # last layer without relu
         W_key = 'W' + str(self.num_layers)
@@ -339,6 +347,11 @@ class FullyConnectedNet(object):
         grads[b_key] = db
 
         for i in range(self.num_layers-1,0,-1):
+            # backward dropout
+            if self.use_dropout:
+                cache_dropout = cache_list.pop()
+                doutput = dropout_backward(doutput, cache_dropout)
+
             # backward relu 
             cache_relu = cache_list.pop()
             doutput = relu_backward(doutput, cache_relu)
@@ -368,7 +381,6 @@ class FullyConnectedNet(object):
         for i in range(self.num_layers):
             W_key = 'W' + str(i+1)
             grads[W_key] += self.reg*self.params[W_key]
-
         ############################################################################
         #                             END OF YOUR CODE                             #
         ############################################################################
